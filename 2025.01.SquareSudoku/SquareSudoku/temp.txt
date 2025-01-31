@@ -1,0 +1,146 @@
+// Check 89027 => 3513 => None
+// Check 104092 => 100000 => None
+
+using SquareSudoku;
+using System.Collections.Concurrent;
+using System.Diagnostics;
+
+
+var executableDirectory = AppDomain.CurrentDomain.BaseDirectory;
+//var min = 200000000;
+//var max = 2000000000;
+var max = 1000000000;
+var min = max/2;
+
+var allDigits = new List<int> { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+var mustHaveDigits = new List<int> { 0, 2, 5 };
+var all9Digits = Utility.GetNineDigits(allDigits, mustHaveDigits);
+
+var sudoku = new SudokuValidator(new List<List<int>>
+{
+    new List<int> { -1, -1, -1, -1, -1, -1, -1, 2, -1 },
+    new List<int> { -1, -1, -1, -1, 2, -1, -1, -1, 5 },
+    new List<int> { -1, 2, -1, -1, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, 2, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, 0, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, -1, 2, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, -1, -1, 5, -1, -1 },
+});
+
+
+var temp = new ConcurrentDictionary<int, MatchedRow>();
+temp.TryAdd(0, new MatchedRow(0, new Number(0, 0, 105346728)));
+temp.TryAdd(1, new MatchedRow(1, new Number(0, 1, 678021345)));
+temp.TryAdd(2, new MatchedRow(2, new Number(0, 2, 324785106)));
+temp.TryAdd(3, new MatchedRow(3, new Number(0, 3, 280174653)));
+temp.TryAdd(4, new MatchedRow(4, new Number(0, 4, 753860214)));
+temp.TryAdd(5, new MatchedRow(5, new Number(0, 5, 416253870)));
+temp.TryAdd(6, new MatchedRow(6, new Number(0, 6, 532607481)));
+temp.TryAdd(7, new MatchedRow(7, new Number(0, 7, 841532067)));
+temp.TryAdd(8, new MatchedRow(8, new Number(0, 8, 067418532)));
+
+var initial = new List<List<int>>
+{
+    new List<int> { -1, -1, -1, -1, -1, -1, -1, 2, -1 },
+    new List<int> { -1, -1, -1, -1, 2, -1, -1, -1, 5 },
+    new List<int> { -1, 2, -1, -1, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, 0, -1, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, 2, -1, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, 0, -1, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, -1, 2, -1, -1, -1 },
+    new List<int> { -1, -1, -1, -1, -1, -1, 5, -1, -1 },
+};
+
+var sudokuGenerator2 = new SudokuGenerator(temp, initial);
+var validSudoku2 = sudokuGenerator2.Generate();
+validSudoku2?.Print();
+
+
+sudoku.Print();
+//Console.WriteLine(sudoku.ValidateSudoku());
+long totalCount = 0;
+long skips = 0;
+
+var stopwatch = Stopwatch.StartNew();
+var allDivisors = new ConcurrentDictionary<int, Divisor>();
+foreach (var (skipDigit, nineDigits) in all9Digits)
+{
+    var sortedNineDigits = nineDigits.OrderByDescending(n => n).ToList();
+    Console.WriteLine($"Using 9 digits out of 10: {Utility.ToNumber(sortedNineDigits)} (skip digit {skipDigit})");
+    var permutations = Utility.GenerateNumberPermutations(sortedNineDigits);
+
+    var subDivisors = new ConcurrentDictionary<int, Divisor>();
+    Parallel.ForEach(permutations, permutation =>
+    {
+        if (!sudoku.ValidateNumberInAnyRows(permutation, out var matchedRow))
+        {
+            skips++;
+            return;
+        }
+
+        var number = Utility.ToNumber(permutation);
+        var divisors = Utility.GetDivisorsDescending(number, min, max);
+        foreach (var divisor in divisors)
+        {
+            // Utility.CreateTextFile($"{executableDirectory}\\result\\{divisor}\\{skipDigits}\\{matchedRow}", $"{number}.txt");
+            subDivisors.AddOrUpdate(divisor, new Divisor(divisor, skipDigit, matchedRow, number), (key, existingDivisor) =>
+            {
+                existingDivisor.AddMatchedRow(skipDigit, matchedRow, number);
+                return existingDivisor;
+            });
+        };
+    });
+
+    long count = 0;
+    long subDivisorCount = 0;
+    foreach (var (d, divisor) in subDivisors)
+    {
+        divisor.ClearInvalidNumbers();
+        if (divisor.HasEnoughMatchedRows())
+        {
+            allDivisors.AddOrUpdate(d, divisor, (key, existingDivisor) =>
+            {
+                existingDivisor.Merge(divisor);
+                return existingDivisor;
+            });
+            count += divisor.CountNumber();
+            subDivisorCount++;
+        }
+    }
+
+    Console.WriteLine($"Number count: {count} (skip digit {skipDigit}). Divisor count: {subDivisorCount}. Time eslapsed: {stopwatch.Elapsed.TotalMinutes} minutes.");
+    totalCount += count;
+}
+
+Console.WriteLine();
+Console.WriteLine($"Total skips: {skips}");
+Console.WriteLine($"Total number count: {totalCount}. Total divisor count: {allDivisors.Count}. Time eslapsed: {stopwatch.Elapsed.TotalMinutes} minutes.");
+Console.WriteLine($"Converting dictionary of {allDivisors.Count} divisors to priority queue");
+var priorityQueue = new PriorityQueue<Divisor, int>(allDivisors.Count);
+foreach (var (d, divisor) in allDivisors)
+{
+    priorityQueue.Enqueue(divisor, -d);
+}
+
+Console.WriteLine();
+Console.WriteLine($"Priority queue count: {priorityQueue.Count}");
+while (priorityQueue.Count > 0)
+{
+    var divisor = priorityQueue.Dequeue();
+    Console.WriteLine($"Checking divisor {divisor.Value} which has {divisor.SkipDigits.Count} skip digits and {divisor.CountNumber()} numbers. Time eslapsed: {stopwatch.Elapsed.TotalMinutes} minutes.");
+    foreach (var kv in divisor.SkipDigits)
+    {
+        var sudokuGenerator = new SudokuGenerator(kv.Value, sudoku.Sudoku);
+        var validSudoku = sudokuGenerator.Generate();
+        if (validSudoku != null)
+        {
+            Console.WriteLine($"Found valid sudoku. GCD is {divisor.Value}");
+            validSudoku.Print();
+            // return;
+        }
+    }
+}
+
