@@ -1,6 +1,6 @@
 Solution can be found in the image
 
-![solution.png](./solution.png)
+![Solution.png](./Solution.png)
 
 Correct submission ID: minhkhang
 
