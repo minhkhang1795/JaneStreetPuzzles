@@ -1,4 +1,4 @@
-Solution can be found in the image
+Solution can be found in the image and the excel file.
 
 ![solution.png](./solution.png)
 
